@@ -670,6 +670,7 @@ def generar_reporte_trazabilidad(resultados: List[Dict]) -> None:
         porcentaje = (r['utilizados'] / r['total_instrumentos'] * 100) if r['total_instrumentos'] > 0 else 0
         datos_reporte.append({
             'etf_name': r['etf_name'],
+            'YEAR': r['year'],
             'total_instrumentos': r['total_instrumentos'],
             'sin_ric': r['sin_ric'],
             'con_ric': r['con_ric'],

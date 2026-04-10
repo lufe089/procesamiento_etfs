@@ -185,9 +185,59 @@ Se calcula solo donde existan ambos valores (`ESG Score` y `Company Market Capit
 
 Sobrescribir completamente en cada ejecución (no acumular histórico).
 
-### Salidas 
+---
 
-`output/resultado_esg_etf.xlsx`
+## Archivos de Salida
+
+El sistema genera 4 tipos de archivos de salida, organizados desde el **nivel más general** (consolidados) hasta el **nivel más específico** (detalles por instrumento):
+
+```text
+📊 NIVEL 1 - CONSOLIDADO GENERAL (Vista de todos los ETFs)
+│
+├─ resultado_esg_etf.xlsx ................... Resumen ESG de todos los ETFs (1 fila = 1 ETF-año)
+│                                              • Promedios simple y ponderado por ETF
+│                                              • 406 ETFs procesados
+│
+├─ Base_de_donnees.xlsx ..................... Base de données actualizada con ESG
+│                                              • Merge bidireccional con base original
+│                                              • Todas las filas originales + nuevas del resultado ESG
+│
+└─ trazabilidad_procesamiento.xlsx .......... Métricas de calidad de datos
+                                               • Estadísticas de match por ETF
+                                               • % de utilización de instrumentos
+
+📋 NIVEL 2 - ERRORES Y OMISIONES (Vista de problemas)
+│
+└─ etfs_sin_metadatos.xlsx .................. ETFs omitidos del procesamiento
+                                               • Solo se genera si hay archivos problemáticos
+                                               • Motivos de exclusión
+
+📑 NIVEL 3 - DETALLE POR ETF (Vista de instrumentos individuales)
+│
+└─ ETFS/
+   ├─ ECH_2012.xlsx ......................... Instrumentos del ETF ECH año 2012
+   ├─ ECH_2013.xlsx ......................... Instrumentos del ETF ECH año 2013
+   ├─ EDEN_2012.xlsx ........................ Instrumentos del ETF EDEN año 2012
+   └─ ... (1 archivo por cada ETF-año)
+      │
+      ├─ Hoja "Procesados" .................. Instrumentos con datos ESG/Market Cap
+      │                                        • Columnas: RIC, Name, Country, Weight, 
+      │                                          No. Shares, ESG Score, Market Cap
+      │
+      └─ Hoja "Descartados" ................. Instrumentos sin datos ESG/Market Cap
+                                               • Motivo de descarte por instrumento
+```
+
+### Detalle de cada archivo:
+
+#### 📊 NIVEL 1: Archivos Consolidados
+
+### 1.1) `output/resultado_esg_etf.xlsx`
+
+
+**Propósito**: Consolidado final con los promedios ESG de todos los ETFs procesados.
+
+**Nivel de agregación**: 1 fila = 1 ETF en 1 año específico
 
 Consolidado final de ETFs con metricas ESG.
 
@@ -201,9 +251,83 @@ Columnas finales:
 - `status` (siempre `"OK"`)
 - `instruments_count` (cantidad de instrumentos analizados)
 
-**Manejo de casos sin match**: si un ETF no tiene ningún match en los masters ESG/Market Cap, no aparece en el resultado final (pero se registra en el archivo que lleva la traza del error).
+**Ejemplo de uso**: "¿Cuál es el ESG promedio del ETF ECH en 2023?"
 
-`output/ETFS/{ticker}_{year}.xlsx`
+**Manejo de casos sin match**: si un ETF no tiene ningún match en los masters ESG/Market Cap, no aparece en el resultado final (pero se registra en `etfs_sin_metadatos.xlsx`).
+
+---
+
+### 1.2) `output/Base_de_donnees.xlsx`
+
+**Propósito**: Base de données original actualizada con los resultados ESG calculados.
+
+**Nivel de agregación**: Todas las filas de la base original + nuevas filas del procesamiento actual
+
+Actualización de la Base de données con los resultados ESG mediante **merge bidireccional**:
+
+1. Lee el archivo `input/Base de données.xlsm` (o `.xlsx` si no existe el `.xlsm`)
+2. Extrae el ticker sin sufijos del punto: `etf_ticker` "ECH.K" → "ECH" (para match con `Country`)
+3. Normaliza columnas `Country` y `Name` en ambos DataFrames (upper + strip)
+4. Hace **merge OUTER** por `Country` (ticker sin sufijo), `Name` y `year`:
+   - ✅ **Mantiene** todas las filas de Base de données original (incluso sin match con resultado ESG)
+   - ✅ **Actualiza** las filas que tienen match con valores ESG
+   - ✅ **Agrega** filas nuevas del resultado ESG que no están en Base de données
+5. Agrega columnas `ESG moyen` (promedio simple) y `ESG pondéré` (promedio ponderado)
+6. Las filas sin match conservan sus datos originales con ESG en NaN
+
+**Resultado**: Base de données completa con:
+- Todas las filas originales preservadas
+- Nuevas filas del resultado ESG agregadas
+- Valores ESG actualizados donde hay match
+
+**Ejemplo de uso**: "Base de datos histórica completa con ESG actualizado"
+
+---
+
+### 1.3) `output/trazabilidad_procesamiento.xlsx`
+
+**Propósito**: Reporte de calidad de datos y métricas de procesamiento por cada ETF.
+
+**Nivel de agregación**: 1 fila = 1 ETF procesado (con estadísticas de calidad)
+
+Reporte de calidad de datos por cada ETF procesado:
+- `etf_name`: Nombre del ETF
+- `YEAR`: Año del ETF
+- `total_instrumentos`: Total de instrumentos en el ETF (todas las filas)
+- `sin_ric`: Instrumentos sin RIC (NaN o vacío)
+- `con_ric`: Instrumentos con RIC válido
+- `match_esg`: Instrumentos con RIC y match en master ESG
+- `match_market_cap`: Instrumentos con RIC y match en master Market Cap
+- `utilizados_analisis`: Instrumentos con RIC y match ESG Y Market Cap válidos (usados en cálculo)
+- `porcentaje_utilizado`: % de instrumentos utilizados sobre el total
+
+**Ejemplo de uso**: "¿Qué porcentaje de instrumentos del ETF MCHI 2024 se pudo procesar?"
+
+---
+
+#### 📋 NIVEL 2: Errores y Omisiones
+
+### 2.1) `output/etfs_sin_metadatos.xlsx`
+
+**Propósito**: Lista de archivos ETF que no se pudieron procesar.
+
+**Nivel de agregación**: 1 fila = 1 archivo ETF omitido
+
+Solo se genera si hay ETFs omitidos. Lista de archivos que no se pudieron procesar:
+- `archivo`: Nombre del archivo ETF
+- `motivo`: Razón por la que se omitió (ej: "Metadatos incompletos", "Tabla vacía")
+
+**Ejemplo de uso**: "¿Qué archivos fallaron y por qué?"
+
+---
+
+#### 📑 NIVEL 3: Detalle por Instrumento
+
+### 3.1) `output/ETFS/{ticker}_{year}.xlsx`
+
+**Propósito**: Detalle completo de todos los instrumentos (empresas) que componen cada ETF.
+
+**Nivel de agregación**: 1 fila = 1 instrumento (empresa) dentro de un ETF específico
 
 Por cada ETF que se procese, se exporta un Excel con 2 hojas:
 
@@ -226,49 +350,35 @@ Por cada ETF que se procese, se exporta un Excel con 2 hojas:
   - `"Sin RIC"` - La fila no tiene RIC
   - `"Con RIC pero sin match en masters ESG ni Market Cap"` - Tiene RIC pero no se encontró en ningún master
 
----
-
-`output/trazabilidad_procesamiento.xlsx`
-
-Reporte de calidad de datos por cada ETF procesado:
-- `etf_name`: Nombre del ETF
-- `total_instrumentos`: Total de instrumentos en el ETF (todas las filas)
-- `sin_ric`: Instrumentos sin RIC (NaN o vacío)
-- `con_ric`: Instrumentos con RIC válido
-- `match_esg`: Instrumentos con RIC y match en master ESG
-- `match_market_cap`: Instrumentos con RIC y match en master Market Cap
-- `utilizados_analisis`: Instrumentos con RIC y match ESG Y Market Cap válidos (usados en cálculo)
-- `porcentaje_utilizado`: % de instrumentos utilizados sobre el total
+**Ejemplo de uso**: "¿Qué empresas componen el ETF ECH 2023 y cuál es el ESG de cada una?"
 
 ---
 
-`output/etfs_sin_metadatos.xlsx`
+### Flujo de información entre archivos
 
-Solo se genera si hay ETFs omitidos. Lista de archivos que no se pudieron procesar:
-- `archivo`: Nombre del archivo ETF
-- `motivo`: Razón por la que se omitió (ej: "Metadatos incompletos", "Tabla vacía")
+```text
+ENTRADA                    PROCESAMIENTO                    SALIDA
+─────────────────────────────────────────────────────────────────────────
 
----
-
-`output/Base_de_donnees.xlsx`
-`output/Base_de_donnees.xlsx`
-
-Actualización de la Base de données con los resultados ESG mediante **merge bidireccional**:
-
-1. Lee el archivo `input/Base de données.xlsm` (o `.xlsx` si no existe el `.xlsm`)
-2. Extrae el ticker sin sufijos del punto: `etf_ticker` "ECH.K" → "ECH" (para match con `Country`)
-3. Normaliza columnas `Country` y `Name` en ambos DataFrames (upper + strip)
-4. Hace **merge OUTER** por `Country` (ticker sin sufijo), `Name` y `year`:
-   - ✅ **Mantiene** todas las filas de Base de données original (incluso sin match con resultado ESG)
-   - ✅ **Actualiza** las filas que tienen match con valores ESG
-   - ✅ **Agrega** filas nuevas del resultado ESG que no están en Base de données
-5. Agrega columnas `ESG moyen` (promedio simple) y `ESG pondéré` (promedio ponderado)
-6. Las filas sin match conservan sus datos originales con ESG en NaN
-
-**Resultado**: Base de données completa con:
-- Todas las filas originales preservadas
-- Nuevas filas del resultado ESG agregadas
-- Valores ESG actualizados donde hay match
+input/ETFS/*.xlsx ────┐
+                      │
+data_maria_esg.xlsx ──┼──> PROCESAMIENTO  ──┬──> resultado_esg_etf.xlsx
+                      │        ETF          │      (Consolidado general)
+data_maria_market_    │                     │
+cap.xlsx ─────────────┘                     ├──> Base_de_donnees.xlsx
+                                            │      (Base actualizada)
+Base de données.xlsx ───────────────────────┤
+                                            ├──> trazabilidad_procesamiento.xlsx
+                                            │      (Métricas de calidad)
+                                            │
+                                            ├──> etfs_sin_metadatos.xlsx
+                                            │      (Errores)
+                                            │
+                                            └──> ETFS/{ticker}_{year}.xlsx
+                                                   (Detalle por instrumento)
+                                                   • Hoja "Procesados"
+                                                   • Hoja "Descartados"
+```
 
 ---
 
@@ -423,7 +533,7 @@ Para implementar `main.py` de forma mantenible, se siguieron estas etapas:
 
 ---
 
-## Criterios de mantenibilidad (sin sobreingenieria)
+## Criterios de mantenibilidad
 
 - Funciones cortas y con una sola responsabilidad.
 - Nombres explicitos para columnas y variables.
@@ -451,4 +561,4 @@ Para implementar `main.py` de forma mantenible, se siguieron estas etapas:
 - ✅ Genera `etfs_sin_metadatos.xlsx` si hay ETFs omitidos
 - ✅ Genera `trazabilidad_procesamiento.xlsx` con métricas de calidad
 - ✅ Cada ETF exportado con 2 hojas (Procesados y Descartados)
-
+- ✅ Base de donne con los resultados ESG actualizados y nuevas filas agregadas
