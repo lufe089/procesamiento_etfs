@@ -35,15 +35,14 @@ jobs:
     - name: Compilar en Windows
       if: runner.os == 'Windows'
       run: |
-        # --onefile: Todo en un solo archivo
-        # --windowed: Sin consola negra detras
-        pyinstaller --onefile --windowed --name "analisis_etfs" main.py
+        # --onefile: Todo en un solo archivo        
+        pyinstaller --onefile --name procesamiento_etfs main.py
 
     # COSTRUCCIÓN PARA MAC
     - name: Compilar en macOS
       if: runner.os == 'macOS'
       run: |
-        pyinstaller --onefile --windowed --name "analisis_etfs" main.py
+        pyinstaller --onefile --name procesamiento_etfs main.py
 
     # SUBIR LOS RESULTADOS (ARTIFACTS)
     - name: Subir Ejecutable
